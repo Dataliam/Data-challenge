@@ -1,0 +1,125 @@
+---
+title: "Modèle AdaBoost"
+output: html_document
+date: "2024-03-01"
+---
+#-----------------------------------------------------------
+#!                Import des données et remplacement des dernier na par valeur la plus                        recurente                   !
+#-----------------------------------------------------------
+```{r setup, include=FALSE}
+chemin <- "E:/Export_vacances/Projet_Generali" # <- pc fixe
+
+train <- read.csv(file.path(chemin, "train_exported.csv"))
+test <- read.csv(file.path(chemin, "test_exported.csv"))
+X_test <- read.csv(file.path(chemin, "X_test.csv"))
+
+train$v23 = as.numeric(train$v23)
+test$v23 = as.numeric(test$v23)
+train$v24 = as.numeric(train$v24)
+test$v24 = as.numeric(test$v24)
+
+library(zoo)
+na.locf(train)
+na.locf(test)
+
+train = train[,-12]
+test = test[,-11]
+```
+#-----------------------------------------------------------
+#!                Premier modèle sans optimisation           !
+#-----------------------------------------------------------
+```{r, include=FALSE}
+library(gbm)
+ada1 <- gbm(target~.,data=train,distribution="adaboost",interaction.depth=2,cv.fold=5,shrinkage=0.05,n.trees = 500)
+```
+#-----------------------------------------------------------
+#!                Analyse du modèle 1                      !
+#-----------------------------------------------------------
+```{r}
+ada1 #On constat que le modèle n'est pas optimisé avec 26 variables inutile et 244 itérations pour être optimal (500 effectué)
+```
+#-----------------------------------------------------------
+#!                Analyse de l'importance des variables     !
+#-----------------------------------------------------------
+```{r}
+imp<-as.data.frame(summary(ada1))
+## Variables ordonnées dans l'ordre décroissant de leur valeur prise pour l'importance relative
+imp[order(imp$rel.inf,decreasing = TRUE),]
+#Les principales variables sont superficie, criminalite,expo et v24
+```
+#-----------------------------------------------------------
+#!                Calibrage du nombre de tree optimal      !
+#-----------------------------------------------------------
+```{r}
+calib<-gbm.perf(ada1)
+calib #On voit que le modèle à pour calibrage optimal environ 217
+```
+#-----------------------------------------------------------
+#!                error pour le nombre optimal de tree    !
+#-----------------------------------------------------------
+```{r}
+ada1$cv.error[223]# le cv-error est le nombre optimal de tree
+```
+#-----------------------------------------------------------
+#!                Essaie des paramètres (à la main)       !
+#-----------------------------------------------------------
+```{r}
+seed = 123
+set.seed(seed)
+ada2 <- gbm(target~.,data=train,distribution="adaboost",interaction.depth=2,n.trees=calib,shrinkage=0.05)
+ada2
+gbm.perf(ada2)
+
+```
+```{r}
+ada2_pred <- predict(ada2,newdata=test,n.trees=110, type = "response", single.tree = FALSE)
+#ada5_pred
+summary(ada2_pred) #0.4170
+library(rpart)
+library(rpart.plot)
+Large_tree<-rpart(target~.,data=train)
+rpart.plot(Large_tree)
+```
+
+```{r}
+plotcp(Large_tree)
+```
+
+#-----------------------------------------------------------
+#!                Export                                    !
+#-----------------------------------------------------------
+```{r}
+Y_test = X_test[, c("X", "Identifiant")]
+Y_test <- cbind(Y_test, ada7_pred) #ADA6 est donc le meilleure modèle
+colnames(Y_test)[3] <- "target"
+write.csv(Y_test, file = "E:/Export_vacances/Projet_Generali/Export2/Y_test.csv", row.names = FALSE)  
+#ada_1       =0.4260
+#ada_5_pred = 0,4308
+#ada_6_pred = 0,4458 => Prédictions optimal
+#ada_7_pred = 0,44576
+```
+
+
+#-----------------------------------------------------------
+#!                Résumé des modèles testé                  !
+#-----------------------------------------------------------
+
+```{r}
+#Optimisation du modèle
+ada3 <- gbm(target~.,data=train,distribution="adaboost",interaction.depth=2,cv.folds = 5,n.trees=500,shrinkage = 0.1)
+ada5_pred <- predict(ada5,newdata=test,n.trees=225, type = "response", single.tree = FALSE)
+ada6_pred <- predict(ada6,newdata=test,n.trees=225, type = "response", single.tree = FALSE)
+ada6.5_pred <- predict(ada6.5,newdata=test,n.trees=217, type = "response", single.tree = FALSE)
+
+ada7_pred <- predict(ada6,newdata=test,n.trees=225, type = "response", single.tree = FALSE)
+
+ada3$cv.error[220]# the cv-error at the best number of trees
+ada5 <- gbm(target~.,data=train,distribution="adaboost",interaction.depth=2,n.trees=225,shrinkage=0.05) #SELECT CV -error lowing
+
+ada6 <- gbm(target~.,data=train,distribution="adaboost",interaction.depth=3,n.trees=225,shrinkage=0.10) #SELECT CV -error lowing
+ada6 <- gbm(target~.,data=train,distribution="adaboost",interaction.depth=2,n.trees=225,shrinkage=0.20) #SELECT CV -error lowing
+
+ada6.5 <- gbm(target~.,data=train,distribution="adaboost",interaction.depth=3,n.trees=217,shrinkage=0.10) #SELECT CV -error lowing
+ada7 <- gbm(target~.,data=train,distribution="adaboost",interaction.depth=5,n.trees=250,shrinkage=0.15) #SELECT CV -error lowing
+```
+

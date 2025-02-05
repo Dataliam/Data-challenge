@@ -1,0 +1,74 @@
+---
+title: "5. Modèle Probit"
+output: html_document
+date: "2024-03-01"
+---
+#-----------------------------------------------------------
+#!                Modèle probit                          !
+#-----------------------------------------------------------
+
+#-----------------------------------------------------------
+#!                IMPORT DES DONNÉES et adaptation des types aux probit      !
+#-----------------------------------------------------------
+```{r setup, include=FALSE}
+chemin <- "C:/Users/Liam/Desktop/Projet_Generali" # <- pc fixe
+train <- read.csv(file.path(chemin, "train_exported.csv"))
+test <- read.csv(file.path(chemin, "test_exported.csv"))
+X_test <- read.csv(file.path(chemin, "X_test.csv"))
+
+train$v23 = as.numeric(train$v23)
+test$v23 = as.numeric(test$v23)
+train$v24 = as.numeric(train$v24)
+test$v24 = as.numeric(test$v24)
+
+library(zoo)
+na.locf(train)
+na.locf(test)
+
+train = train[,-12]
+test = test[,-11]
+```
+
+#-----------------------------------------------------------
+#!                Modèle sans optimisation                     !
+#-----------------------------------------------------------
+```{r, include=FALSE}
+# Modèle Probit complet sans sélection de variables
+full_probit_model <- glm(target ~ ., data = train, family = binomial(link = "probit"))
+
+
+# Résumé du modèle après sélection
+summary(full_probit_model)
+
+# Faire des prédictions sur l'ensemble de test
+predicted <- predict(full_probit_model, newdata = test) #0.36
+```
+
+#-----------------------------------------------------------
+#!                modèles optimisé                      !
+#-----------------------------------------------------------
+```{r}
+# Modèle Optimisé
+opti_probit_model <- glm(target ~ Annee_contrat + EXPO + v19 + Superficie + v21 + Annee_construction + v23 + v24 + v7V + criminalite + Score.Fiscal + Nb.Résidences.Principales, 
+                         data = train, 
+                         family = binomial(link = "probit"))
+
+# Summary 
+summary(opti_probit_model) #0.39
+
+# prédiciton
+predicted_opti <- predict(opti_probit_model, newdata = test, type = "response")
+```
+#-----------------------------------------------------------
+#!               Export des prédictions pour soummission   !
+#-----------------------------------------------------------
+
+```{r}
+#Export
+
+Y_test = X_test[, c("X", "Identifiant")]
+Y_test <- cbind(Y_test, predicted_opti)
+colnames(Y_test)[3] <- "target"
+write.csv(Y_test, file = "E:/Export_vacances/Projet_Generali/Export/probit.csv", row.names = FALSE) 
+```
+

@@ -1,0 +1,209 @@
+---
+title: "7. LightGBM"
+output: html_document
+date: "2024-03-01"
+---
+
+```{r setup, include=FALSE}
+chemin <- "C:/Users/Liam/Desktop/Projet_Generali" # <- pc fixe
+chemin <- "E:/Export_vacances/Projet_Generali"
+train <- read.csv(file.path(chemin, "train_exported.csv"))
+test <- read.csv(file.path(chemin, "test_exported.csv"))
+X_test <- read.csv(file.path(chemin, "X_test.csv"))
+
+train$v23 = as.numeric(train$v23)
+test$v23 = as.numeric(test$v23)
+train$v24 = as.numeric(train$v24)
+test$v24 = as.numeric(test$v24)
+
+library(zoo)
+na.locf(train)
+na.locf(test)
+
+train = train[,-12]
+test = test[,-11]
+```
+
+2. Modèle de base sans optimisation avec paramètre par défault
+```{r, include=FALSE}
+install.packages("lightgbm")
+library(lightgbm)
+
+
+train_data <- lgb.Dataset(data = as.matrix(train[, -which(names(train) == "target")]), label = train$target)
+params <- list(
+  objective = "binary",
+  metric = "binary_logloss",
+  num_leaves = 31,
+  learning_rate = 0.05,
+  feature_fraction = 0.9
+)
+
+```
+#PRédiction de ce modèle
+
+```{r, include=FALSE}
+lgb_model <- lgb.train(
+  params = params,
+  data = train_data,
+  nrounds = 100,
+  valids = list(train = train_data),
+  early_stopping_rounds = 10
+)
+
+```
+
+Reglage du problème concernant les colonnes qui ne sont pas exactement dans le même ordre
+```{r}
+
+# Obtenir l'ordre des colonnes de l'ensemble d'entraînement (sans la colonne cible)
+col_order <- names(train[, -which(names(train) == "target")])
+
+# Réordonner les colonnes de l'ensemble de données de test pour correspondre à l'ordre de l'ensemble d'entraînement
+test <- test[, col_order]
+
+# Maintenant, convertissez votre dataframe de test réordonné en une matrice pour LightGBM
+test_matrix <- as.matrix(test)
+
+# Vous pouvez maintenant utiliser test_matrix pour faire des prédictions avec LightGBM
+light_pred_1 <- predict(lgb_model, test_matrix)
+```
+
+```{r}
+lgb.importance(model = lgb_model) #Modèle a opti
+#Les variables importante sont Superficie, criminalite,EXPO
+```
+
+
+Export utlisé pour toutes les prédictions
+```{r}
+Y_test = X_test[, c("X", "Identifiant")]
+Y_test <- cbind(Y_test, light_pred_5) 
+colnames(Y_test)[3] <- "target"
+write.csv(Y_test, file = "C:/Users/Liam/Desktop/Projet_Generali/Export2/Y_test.csv", row.names = FALSE)  
+
+#light1 = 0,4241
+#light2 = 0,4477 <= meilleur prediction 
+#light3 = 0.4378
+#light4 = 0,4378
+#light5 = 0,4209
+```
+
+Optimisation du modèle par méthode automatisé
+
+```{r}
+#Sur quelle paramètre joué ? 
+#Validation croisé 
+
+#num_leaves : Ce paramètre contrôle le nombre de feuilles dans chaque arbre. Plus il y a de feuilles, plus le modèle est complexe et sujet au surapprentissage
+
+#learning_rate : C'est le taux d'apprentissage. Un taux plus petit peut améliorer les performances du modèle mais nécessitera plus de rondes d'entraînement (nrounds).
+
+#feature_fraction : Cela permet de faire du sous-échantillonnage des caractéristiques à chaque itération. Diminuer ce nombre peut aider à prévenir le surapprentissage.
+
+#bagging_fraction et bagging_freq : Ces paramètres contrôlent le sous-échantillonnage des données. Cela peut aussi aider à combattre le surapprentissage.
+
+#min_data_in_leaf : C'est le nombre minimum de données nécessaires dans une feuille. Augmenter ce nombre peut aider à prévenir le surapprentissage.
+
+#lambda_l1 et lambda_l2 : Ce sont les termes de régularisation L1 et L2, qui ajoutent une pénalité sur la taille des coefficients.
+if(!require(ParBayesianOptimization)) install.packages("ParBayesianOptimization")
+if(!require(lightgbm)) install.packages("lightgbm")
+library(ParBayesianOptimization)
+library(lightgbm)
+
+optimize_function <- function(num_leaves, learning_rate, feature_fraction, min_data_in_leaf, max_depth) {
+  
+  params <- list(
+    objective = "binary",
+    metric = "auc",
+    num_leaves = as.integer(num_leaves),
+    learning_rate = learning_rate,
+    feature_fraction = feature_fraction,
+    min_data_in_leaf = as.integer(min_data_in_leaf),
+    max_depth = as.integer(max_depth)
+  )
+  
+  cv_results <- lgb.cv(
+    params = params,
+    data = train_data,
+    nfold = 5,
+    nrounds = 100,
+    early_stopping_rounds = 10,
+    stratified = TRUE,
+    verbose = -1
+  )
+  
+  # Retourner le meilleur AUC
+  max_auc <- max(cv_results$record$eval[[1]]$auc)
+  return(list(Score = max_auc, Pred = max_auc))
+}
+#Hyperparamètre
+bounds <- list(
+  num_leaves = c(20L, 40L),
+  learning_rate = c(0.01, 0.3),
+  feature_fraction = c(0.5, 0.9),
+  min_data_in_leaf = c(20L, 100L),
+  max_depth = c(3L, 10L)
+)
+
+
+```
+
+```{r}
+params <- list(
+  objective = "binary",
+  metric = "binary_logloss",
+  num_leaves = 39	,  # Exemple basé sur vos résultats d'optimisation
+  learning_rate = 0.15,
+  feature_fraction = 0.90,
+  max_depth = 2
+)
+
+# Entraînement du modèle
+lgb_model <- lgb.train(
+  params = params,
+  data = train_data,
+  nrounds = 500,  # Vous pouvez ajuster ce nombre basé sur vos besoins
+  valids = list(train = train_data),
+  early_stopping_rounds = 10
+)
+
+# Préparer les données de test
+
+# Faire des prédictions
+light_pred_4 <- predict(lgb_model, test_matrix)
+```
+
+```{r}
+###EXPORT
+Y_test = X_test[, c("X", "Identifiant")]
+Y_test <- cbind(Y_test, light_pred_4) #ADA6 est donc le meilleure modèle
+colnames(Y_test)[3] <- "target"
+write.csv(Y_test, file = "E:/Export_vacances/Projet_Generali/Y_test.csv", row.names = FALSE)  
+```
+
+
+```{r}
+params <- list(
+  objective = "binary",
+  metric = "binary_logloss",
+  num_leaves = 60,  # Exemple basé sur vos résultats d'optimisation
+  learning_rate = 0.16404422,
+  feature_fraction = 0.8812428,
+  max_depth = 4
+)
+
+# Entraînement du modèle
+lgb_model <- lgb.train(
+  params = params,
+  data = train_data,
+  nrounds = 230,  # Vous pouvez ajuster ce nombre basé sur vos besoins
+  valids = list(train = train_data),
+  early_stopping_rounds = 10
+)
+
+# Préparer les données de test
+
+# Faire des prédictions
+light_pred_5 <- predict(lgb_model, test_matrix)
+```

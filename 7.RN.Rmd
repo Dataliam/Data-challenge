@@ -1,0 +1,58 @@
+---
+title: "Réseaux Neuronnal"
+output: html_document
+date: "2024-03-01"
+---
+
+```{r setup, include=FALSE}
+chemin <- "C:/Users/Liam/Desktop/Projet_Generali" # <- pc fixe
+
+train <- read.csv(file.path(chemin, "train_exported.csv"))
+test <- read.csv(file.path(chemin, "test_exported.csv"))
+X_test <- read.csv(file.path(chemin, "X_test.csv"))
+
+train$v23 = as.numeric(train$v23)
+test$v23 = as.numeric(test$v23)
+train$v24 = as.numeric(train$v24)
+test$v24 = as.numeric(test$v24)
+
+library(zoo)
+train = na.locf(train)
+test = na.locf(test)
+
+train = train[,-12]
+test = test[,-11]
+```
+On remet les colonnes des dataset dans le même ordre
+```{r}
+# Obtenir l'ordre des colonnes de l'ensemble d'entraînement (sans la colonne cible)
+col_order <- names(train[, -which(names(train) == "target")])
+
+# Réordonner les colonnes de l'ensemble de données de test pour correspondre à l'ordre de l'ensemble d'entraînement
+test <- test[, col_order]
+
+test_matrix <- as.matrix(test)
+
+```
+
+Prédiction du modèle de base, très long à exécuter
+```{r}
+
+library(neuralnet)
+# Créer un modèle séquentiel
+model <- neuralnet(target ~ .,
+                   data = train,
+                   hidden = c(64, 32),  # Définir la structure des couches cachées
+                   linear.output = FALSE,  # Utiliser une fonction d'activation non linéaire
+                   threshold = 0.5)  # Seuil de classification pour la prédiction binaire
+
+# Afficher le modèle
+print(model)
+
+# Faire des prédictions sur les données de test
+predictions <- predict(model, test)
+
+# Afficher les prédictions
+print(predictions)
+```
+

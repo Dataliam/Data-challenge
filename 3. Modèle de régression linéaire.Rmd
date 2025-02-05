@@ -1,0 +1,70 @@
+---
+title: "1.Régression linéaire"
+output: html_document
+date: "2024-03-01"
+---
+#-----------------------------------------------------------
+#!                IMPORT et quelques transformation adapté au modèle       !
+#-----------------------------------------------------------
+```{r setup, include=FALSE}
+chemin <- "E:/Export_vacances/Projet_Generali" # <- pc fixe
+train <- read.csv(file.path(chemin, "train_exported.csv"))
+test <- read.csv(file.path(chemin, "test_exported.csv"))
+X_test <- read.csv(file.path(chemin, "X_test.csv"))
+train$v23 = as.numeric(train$v23)
+test$v23 = as.numeric(test$v23)
+train$v24 = as.numeric(train$v24)
+test$v24 = as.numeric(test$v24)
+library(zoo)
+na.locf(train)
+na.locf(test)
+
+train = train[,-12]
+test = test[,-11]
+```
+#-----------------------------------------------------------
+#!                Modèle sans optimisation               !
+#-----------------------------------------------------------
+```{r, include=FALSE}
+# Construction du modèle de régression linéaire
+lm_model <- lm(target ~ ., data = train)
+
+# Faire des prédictions sur l'ensemble de test
+predicted <- predict(lm_model, newdata = test)    #Score de 0.39
+
+# Résumé du modèle pour voir les résultats
+summary(lm_model)
+```
+#-----------------------------------------------------------
+#!                Modèle optimisé par backward             !
+#-----------------------------------------------------------
+```{r, include=FALSE}
+#Optimisation par la méthode backward (séléction à la main)
+lm_model_opti <- lm(target ~ Annee_contrat + EXPO + v19 + Superficie + v21 + Annee_construction + v5N + v72 + v7V + v14O + taux_chomage + criminalite +
+                 Score.Fiscal, data = train)
+
+# Faire des prédictions sur l'ensemble de test
+predicted <- predict(lm_model_opti, newdata = test) #Score de 0.409
+summary(lm_model_opti)
+
+#Export
+
+Y_test = X_test[, c("X", "Identifiant")]
+Y_test <- cbind(Y_test, predicted)
+colnames(Y_test)[3] <- "target"
+write.csv(Y_test, file = "C:/Users/Liam/Desktop/Projet_Generali/Export/Y_test_reg.csv", row.names = FALSE) 
+```
+
+On regarde les performance de notre modèle
+```{r}
+# Prédictions sur l'ensemble d'entraînement (pour illustration)
+predicted_probs_train <- predict(lm_model_opti, newdata = train, type = "response")
+
+# Calcul de la courbe ROC sur l'ensemble d'entraînement
+library(pROC)
+roc_curve_train <- roc(response = train$target, predictor = predicted_probs_train)
+
+# Affichage de la courbe ROC
+plot(roc_curve_train)
+```
+
